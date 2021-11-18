@@ -203,7 +203,7 @@ spec:
             - name: GITLAB_ROOT_EMAIL
               value: info.tech@epeony.net
             - name: GITLAB_HOST
-              value: git.peony-devops.com
+              value: git.peony.com
             - name: GITLAB_PORT
               value: "80"
             - name: GITLAB_SSH_PORT

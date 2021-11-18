@@ -1,0 +1,87 @@
+### nexus3
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus3
+  namespace: infra
+  labels:
+    name: nexus3
+spec:
+  selector:
+    matchLabels:
+      name: nexus3
+  template:
+    metadata:
+      namespace: infra
+      name: nexus3
+      labels:
+        name: nexus3
+    spec:
+      initContainers:
+        - name: volume-mount
+          image: busybox
+          command: [ "sh", "-c", "chown -R 200:200 /nexus-data" ]
+          volumeMounts:
+            - name: data
+              mountPath: /nexus-data
+      containers:
+        - name: nexus3
+          image: 10.20.24.3/peony/nexus3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: nexus3
+              containerPort: 8081
+          volumeMounts:
+            - mountPath: /nexus-data
+              name: data
+          resources:
+            requests:
+              cpu: 2
+              memory: 4Gi
+            limits:
+              cpu: 2
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nexus3
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  namespace: infra
+  name: nexus3
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 30Gi
+  storageClassName: bangni-dloca
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: infra
+  name: nexus3
+  labels:
+    name: nexus3
+spec:
+  ports:
+    - name: nexus3
+      port: 8081
+      targetPort: nexus3
+  selector:
+    name: nexus3
