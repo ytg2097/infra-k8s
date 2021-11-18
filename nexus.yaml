@@ -85,3 +85,23 @@ spec:
       targetPort: nexus3
   selector:
     name: nexus3
+
+---
+kind: Ingress
+apiVersion: networking.k8s.io/v1beta1
+metadata:
+  name: nexus-http
+  namespace: infra
+  annotations:
+    # 处理nginx ingress的413错误
+    nginx.ingress.kubernetes.io/proxy-body-size: 500m
+spec:
+  rules:
+    - host: nexus.peony.com
+      http:
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+            backend:
+              serviceName: nexus3
+              servicePort: 8081
