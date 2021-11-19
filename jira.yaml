@@ -1,0 +1,243 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  namespace: infra
+  name: jira-mysql57
+data:
+  my.cnf:  |
+    [mysqld]
+    default-storage-engine=INNODB
+    default-time-zone='+08:00'
+    character_set_server=utf8mb4
+    skip-name-resolve
+    innodb_default_row_format=DYNAMIC
+    innodb_large_prefix=ON
+    innodb_file_format=Barracuda
+    innodb_log_file_size=2G
+    sql_mode = NO_AUTO_VALUE_ON_ZERO
+    skip-ssl
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jira-mysql57
+  namespace: infra
+  labels:
+    name: jira-mysql57
+spec:
+  selector:
+    matchLabels:
+      name: jira-mysql57
+  template:
+    metadata:
+      namespace: infra
+      name: jira-mysql57
+      labels:
+        name: jira-mysql57
+    spec:
+      containers:
+        - name: jira-mysql57
+          image: mysql:5.7
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: jira-mysql57
+              containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "123456"
+            - name: MYSQL_USER
+              value: "jira"
+            - name: MYSQL_PASSWORD
+              value: "jira"
+            - name: MYSQL_DATABASE
+              value: "jira"
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: data
+            - name: jira-mysql57-configmap
+              mountPath: /etc/mysql/conf.d/my.cnf
+              subPath: my.cnf
+          resources:
+            requests:
+              cpu: 0.5
+              memory: 2Gi
+            limits:
+              cpu: 0.5
+              memory: 2Gi
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - '-c'
+                - 'mysqladmin ping -u root -p${MYSQL_ROOT_PASSWORD}'
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - '-c'
+                - 'mysqladmin ping -u root -p${MYSQL_ROOT_PASSWORD}'
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: jira-mysql57
+        - name: jira-mysql57-configmap
+          configMap:
+            name: jira-mysql57
+            items:
+              - key: my.cnf
+                path: my.cnf
+            defaultMode: 420
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  namespace: infra
+  name: jira-mysql57
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 30Gi
+  storageClassName: bangni-dloca
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: infra
+  name: jira-mysql57
+  labels:
+    name: jira-mysql57
+spec:
+  ports:
+    - name: jira-mysql57
+      port: 3306
+      targetPort: jira-mysql57
+  selector:
+    name: jira-mysql57
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: jira
+  namespace: infra
+  labels:
+    name: jira
+spec:
+  selector:
+    matchLabels:
+      name: jira
+  template:
+    metadata:
+      name: jira
+      namespace: infra
+      labels:
+        name: jira
+    spec:
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: jira
+      containers:
+        - name: jira
+          image: 10.20.24.3/peony/jira:mysql57
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: JVM_MINIMUM_MEMORY
+              value: 512m
+            - name: JVM_MAXIMUM_MEMORY
+              value: 4096m
+            - name: ATL_PROXY_NAME
+              value: jira.peony.com
+            - name: ATL_DB_TYPE
+              value: mysql57
+            - name: ATL_DB_DRIVER
+              value: com.mysql.jdbc.Driver
+            - name: ATL_JDBC_URL
+              value: jdbc:mysql://jira-mysql57:3306/jira?useSSL=false&useUnicode=true&characterEncoding=UTF-8&autoReconnect=true
+            - name: ATL_JDBC_USER
+              value: jira
+            - name: ATL_JDBC_PASSWORD
+              value: jira
+          ports:
+            - name: jira
+              containerPort: 8080
+          volumeMounts:
+            - mountPath: /var/atlassian/application-data/jira
+              name: data
+          resources:
+            requests:
+              cpu: 2
+              memory: 5Gi
+            limits:
+              cpu: 2
+              memory: 5Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  namespace: infra
+  name: jira
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: bangni-dloca
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: infra
+  name: jira
+  labels:
+    name: jira
+spec:
+  ports:
+    - name: jira
+      port: 8080
+      targetPort: jira
+  selector:
+    name: jira
+
+---
+kind: Ingress
+apiVersion: networking.k8s.io/v1beta1
+metadata:
+  name: jira-http
+  namespace: infra
+spec:
+  rules:
+    - host: jira.peony.com
+      http:
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+            backend:
+              serviceName: jira
+              servicePort: 8080
+
